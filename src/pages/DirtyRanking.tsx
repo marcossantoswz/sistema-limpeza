@@ -1,16 +1,15 @@
-import React from 'react';
+
 import { useDirtyRanking } from '../hooks/useDirtyRanking';
 import { Loader } from '../components/ui/Loader';
 
 import {
   Skull,
   Trash2,
-  AlertTriangle,
-  Trophy
+  AlertTriangle
 } from 'lucide-react';
 
 
-function getDirtyTitle(score) {
+function getDirtyTitle(score: number) {
 
   if (score >= 100) {
     return {

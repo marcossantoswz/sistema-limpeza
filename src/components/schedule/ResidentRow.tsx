@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { Trophy, Coffee, Target } from 'lucide-react';
 
 interface ResidentRowProps {

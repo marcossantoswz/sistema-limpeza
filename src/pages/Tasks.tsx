@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useSchedule } from '../hooks/useSchedule';
 import { useRanking } from '../hooks/useRanking';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,8 +9,7 @@ import {
   AlertTriangle,
   Coffee,
   CheckCircle2,
-  ClipboardList,
-  Sparkles
+  ClipboardList
 } from 'lucide-react';
 
 

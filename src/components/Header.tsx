@@ -1,4 +1,3 @@
-import React from 'react';
 import { Menu, User } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 

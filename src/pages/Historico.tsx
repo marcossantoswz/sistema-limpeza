@@ -1,4 +1,4 @@
-import React,{useState} from "react";
+import {useState} from "react";
 import {useHistory} from "../hooks/useHistory";
 import {Loader} from "../components/ui/Loader";
 

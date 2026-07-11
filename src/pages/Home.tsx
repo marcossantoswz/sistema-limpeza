@@ -1,7 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import {
   ClipboardList,
-  Trophy,
   Skull,
   CalendarDays,
   Megaphone,
@@ -9,21 +8,31 @@ import {
   ShoppingCart
 } from "lucide-react";
 
-import { User } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/Button";
-import { useEffect } from "react";
 import { supabase } from "../services/supabase";
+
+interface MuralMessage {
+  id: string;
+  autor: string;
+  mensagem: string;
+  created_at: string;
+}
 
 export default function Home() {
   const navigate = useNavigate();
 
   const { user } = useAuth();
 
-const [mensagem, setMensagem] = useState("");
+
+  const [mensagem, setMensagem] = useState("");
+
+  const [messages, setMessages] = useState<MuralMessage[]>([]);
+
+
 
 useEffect(() => {
     carregarMensagens();
@@ -40,7 +49,6 @@ async function carregarMensagens() {
 
 }
 
-const [messages, setMessages] = useState([]);
 
 async function publicarMensagem() {
 
@@ -338,25 +346,25 @@ function Card({
 
 }
 
-function Message({
-  nome,
-  texto
-}: any) {
+// function Message({
+//   nome,
+//   texto
+// }: any) {
 
-  return (
+//   return (
 
-    <div className="border rounded-2xl p-4 hover:bg-gray-50 transition">
+//     <div className="border rounded-2xl p-4 hover:bg-gray-50 transition">
 
-      <div className="font-bold">
-        {nome}
-      </div>
+//       <div className="font-bold">
+//         {nome}
+//       </div>
 
-      <div className="text-gray-600 mt-1">
-        {texto}
-      </div>
+//       <div className="text-gray-600 mt-1">
+//         {texto}
+//       </div>
 
-    </div>
+//     </div>
 
-  );
+//   );
 
-}
+// }
