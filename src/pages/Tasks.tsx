@@ -9,7 +9,9 @@ import {
   AlertTriangle,
   Coffee,
   CheckCircle2,
-  ClipboardList
+  ClipboardList,
+  Copy,
+  Check
 } from 'lucide-react';
 
 
@@ -28,6 +30,7 @@ export function Tasks() {
 
 
   const [isClosing,setIsClosing] = useState(false);
+  const [copied, setCopied] = useState(false);
 
 
 
@@ -64,19 +67,82 @@ export function Tasks() {
 
 
 
+  // async function handleCloseWeek(){
+
+  //   if(!window.confirm('Fechar semana e gerar nova escala?'))
+  //     return;
+
+
+  //   setIsClosing(true);
+
+  //   await closeAndGenerateWeek();
+
+  //   await refetch();
+
+  //   setIsClosing(false);
+
+  // }
+
   async function handleCloseWeek(){
 
-    if(!window.confirm('Fechar semana e gerar nova escala?'))
-      return;
+  if(!window.confirm('Fechar semana e gerar nova escala?'))
+    return;
+
+  // Monta o relatório ANTES de fechar, usando os dados atuais da semana
+  const feitas = assignments.filter(
+    a => a.tarefas !== null && a.status === 'concluida'
+  );
+
+  const naoFeitas = assignments.filter(
+    a => a.tarefas !== null && a.status === 'pendente'
+  );
+
+  let relatorio = '📋 Semana finalizada\n\n';
+
+  relatorio += '✅ Fizeram a tarefa:\n';
+  relatorio += feitas.length > 0
+    ? feitas.map(a => `${a.moradores.nome} - ${a.tarefas!.nome}`).join('\n')
+    : 'Ninguém';
+
+  relatorio += '\n\n❌ Não fizeram:\n';
+  relatorio += naoFeitas.length > 0
+    ? naoFeitas.map(a => `${a.moradores.nome} - ${a.tarefas!.nome}`).join('\n')
+    : 'Ninguém';
+
+  try {
+    await navigator.clipboard.writeText(relatorio);
+  } catch {
+    // Se o clipboard falhar, não trava o fechamento da semana
+    console.warn('Não foi possível copiar o relatório automaticamente.');
+  }
+
+  setIsClosing(true);
+
+  await closeAndGenerateWeek();
+
+  await refetch();
+
+  setIsClosing(false);
+
+}
 
 
-    setIsClosing(true);
 
-    await closeAndGenerateWeek();
+  function handleCopySchedule(){
 
-    await refetch();
+    const linhas = assignments.map(a => {
+      const tarefa = a.tarefas ? a.tarefas.nome : 'Folga';
+      return `${a.moradores.nome} - ${tarefa}`;
+    });
 
-    setIsClosing(false);
+    const texto = linhas.join('\n');
+
+    navigator.clipboard.writeText(texto).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      alert('Não foi possível copiar. Tente novamente.');
+    });
 
   }
 
@@ -230,31 +296,69 @@ export function Tasks() {
 
 
 
+            <div className="
+              flex
+              items-center
+              gap-3
+            ">
 
-            {
-              user && (
+              <Button
+                onClick={handleCopySchedule}
+                className="
+                  bg-white/10
+                  text-white
+                  hover:bg-white/20
+                  rounded-xl
+                  font-bold
+                  flex
+                  items-center
+                  gap-2
+                "
+              >
 
-                <Button
+                {
+                  copied
+                  ?
+                  <>
+                    <Check size={18}/>
+                    Copiado!
+                  </>
+                  :
+                  <>
+                    <Copy size={18}/>
+                    Copiar escala
+                  </>
+                }
 
-                  onClick={handleCloseWeek}
+              </Button>
 
-                  isLoading={isClosing}
 
-                  className="
-                    bg-emerald-400
-                    text-slate-900
-                    hover:bg-emerald-300
-                    rounded-xl
-                    font-bold
-                  "
-                >
+              {
+                user && (
 
-                  Finalizar semana
+                  <Button
 
-                </Button>
+                    onClick={handleCloseWeek}
 
-              )
-            }
+                    isLoading={isClosing}
+
+                    className="
+                      bg-emerald-400
+                      text-slate-900
+                      hover:bg-emerald-300
+                      rounded-xl
+                      font-bold
+                    "
+                  >
+
+                    Finalizar semana
+
+                  </Button>
+
+                )
+              }
+
+            </div>
 
 
           </div>
