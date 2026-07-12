@@ -16,75 +16,58 @@ export function generateNextWeekSchedule(
   tasks: Task[],
   history: AssignmentHistory[]
 ): { residentId: string; taskId: string | null; weight: number }[] {
-  
+
   // 1. Inicializa os status de cada morador
   const stats: Record<string, ResidentStats> = {};
   residents.forEach(r => {
-    stats[r.id] = { 
-      id: r.id, 
-      totalWeight: 0, 
+    stats[r.id] = {
+      id: r.id,
+      totalWeight: 0,
       totalOffs: 0,
       weeksWithoutOff: 0,
-      taskCounts: {}, 
-      lastWeekTaskId: null 
+      taskCounts: {},
+      lastWeekTaskId: null
     };
   });
 
-  // 2. Descobre qual foi a última semana baseada na data de início
-  const sortedHistory = [...history].sort((a, b) => 
-    new Date(b.semanas.data_inicio).getTime() - new Date(a.semanas.data_inicio).getTime()
+  // 2. Descobre qual foi a última semana baseada em quando foi CRIADA
+  // (não na data_inicio, que pode se repetir se várias semanas forem
+  // finalizadas no mesmo dia durante testes)
+  const sortedHistory = [...history].sort((a, b) =>
+    new Date(b.semanas.created_at).getTime() - new Date(a.semanas.created_at).getTime()
   );
   const lastWeekId = sortedHistory.length > 0 ? sortedHistory[0].semana_id : null;
 
-  // Descobre há quantas semanas cada morador está sem folga
-// 3. Descobre há quantas semanas consecutivas cada morador está SEM folga.
-// A lógica é: olhamos da semana mais recente para a mais antiga.
-// Se o morador tem uma tarefa na semana X, o contador aumenta.
-// Se ele tem folga (null) na semana X, ou não existe registro na semana X, o contador para.
+  // 3. Descobre há quantas semanas consecutivas cada morador está SEM folga.
+  const weekIds = [...new Set(history.map(h => h.semana_id))];
+  const sortedWeekIds = weekIds.sort((a, b) => {
+    const dateA = history.find(h => h.semana_id === a)!.semanas.created_at;
+    const dateB = history.find(h => h.semana_id === b)!.semanas.created_at;
+    return new Date(dateB).getTime() - new Date(dateA).getTime();
+  });
 
-const weekIds = [...new Set(history.map(h => h.semana_id))];
-// Ordena as semanas da mais recente para a mais antiga baseada na data de início
-const sortedWeekIds = weekIds.sort((a, b) => {
-  const dateA = history.find(h => h.semana_id === a)!.semanas.data_inicio;
-  const dateB = history.find(h => h.semana_id === b)!.semanas.data_inicio;
-  return new Date(dateB).getTime() - new Date(dateA).getTime();
-});
-
-residents.forEach(r => {
-  let count = 0;
-  
-  // Itera sobre as semanas ordenadas
-  for (const weekId of sortedWeekIds) {
-    // Busca o registro do morador nesta semana específica
-    const record = history.find(
-      h => h.semana_id === weekId && h.morador_id === r.id
-    );
-
-    // Se o morador não estava na casa nessa semana, paramos a contagem
-    if (!record) break;
-
-    // Se ele teve folga nesta semana, a contagem de semanas SEM folga reseta para 0
-    if (record.tarefa_id === null) {
-      break; 
+  residents.forEach(r => {
+    let count = 0;
+    for (const weekId of sortedWeekIds) {
+      const record = history.find(
+        h => h.semana_id === weekId && h.morador_id === r.id
+      );
+      if (!record) break;
+      if (record.tarefa_id === null) break;
+      count++;
     }
+    stats[r.id].weeksWithoutOff = count;
+  });
 
-    // Se ele teve tarefa, incrementa a contagem
-    count++;
-  }
-  
-  // Salva o resultado no stats
-  stats[r.id].weeksWithoutOff = count;
-});
-
-  // 3. Compila o currículo histórico de cada morador
+  // 4. Compila o currículo histórico de cada morador
   history.forEach(record => {
-    if (!stats[record.morador_id]) return; // Ignora moradores inativos antigos
-    
+    if (!stats[record.morador_id]) return;
+
     if (record.tarefa_id === null) {
       stats[record.morador_id].totalOffs += 1;
     } else {
       stats[record.morador_id].totalWeight += record.peso_historico;
-      stats[record.morador_id].taskCounts[record.tarefa_id] = 
+      stats[record.morador_id].taskCounts[record.tarefa_id] =
         (stats[record.morador_id].taskCounts[record.tarefa_id] || 0) + 1;
     }
 
@@ -93,92 +76,140 @@ residents.forEach(r => {
     }
   });
 
+  // ==========================================================
+  // REGRA 3 e 4: Tarefa não concluída trava a pessoa
+  // na mesma tarefa + penalidade de -1 no weeksWithoutOff
+  // ==========================================================
   let availableResidents = [...residents];
+  let availableTasks = [...tasks];
   const newAssignments: { residentId: string; taskId: string | null; weight: number }[] = [];
-  
-  // 4. Determinar e Distribuir Folgas (Prioridade Máxima)
-  const numOffs = Math.max(0, availableResidents.length - tasks.length);
-  
-  if (numOffs > 0) {
-    // Ordena quem teve menos folgas. Em caso de empate absoluto, aleatório.
-    availableResidents.sort((a, b) => {
-      const diff =
-        stats[b.id].weeksWithoutOff -
-        stats[a.id].weeksWithoutOff;
+  const lockedResidentIds = new Set<string>();
 
+  if (lastWeekId) {
+    residents.forEach(r => {
+      const lastWeekRecord = history.find(
+        h => h.semana_id === lastWeekId && h.morador_id === r.id
+      );
 
-        if(diff !== 0)
-        return diff;
+      // Só se aplica se: teve tarefa (não era folga) E não foi concluída
+      const naoCompletou =
+        lastWeekRecord &&
+        lastWeekRecord.tarefa_id !== null &&
+        lastWeekRecord.status === 'pendente';
 
-      const offDiff =
-        stats[a.id].totalOffs -
-        stats[b.id].totalOffs;
+      if (naoCompletou) {
+        const tarefaPendente = tasks.find(t => t.id === lastWeekRecord!.tarefa_id);
 
-      if(offDiff !== 0)
-        return offDiff;
+        // REGRA 4: penalidade -1, sem deixar negativo
+        stats[r.id].weeksWithoutOff = Math.max(0, stats[r.id].weeksWithoutOff - 1);
 
+        // REGRA 3: só força repetição se a tarefa ainda existir/estiver ativa
+        if (tarefaPendente) {
+          newAssignments.push({
+            residentId: r.id,
+            taskId: tarefaPendente.id,
+            weight: tarefaPendente.peso
+          });
 
-      // desempate aleatório
-      return Math.random() - 0.5;
-      //return diff !== 0 ? diff : Math.random() - 0.5;
+          stats[r.id].totalWeight += tarefaPendente.peso;
+          stats[r.id].taskCounts[tarefaPendente.id] =
+            (stats[r.id].taskCounts[tarefaPendente.id] || 0) + 1;
+
+          lockedResidentIds.add(r.id);
+
+          console.log(`${r.nome} não concluiu "${tarefaPendente.nome}" — travado na mesma tarefa (penalidade -1 aplicada).`);
+        }
+      }
     });
+
+    // Remove quem já está travado do pool de decisão normal
+    availableResidents = availableResidents.filter(r => !lockedResidentIds.has(r.id));
+    availableTasks = availableTasks.filter(
+      t => !newAssignments.some(a => a.taskId === t.id)
+    );
+  }
+
+  // 5. Determinar e Distribuir Folgas (Prioridade Máxima)
+  // numOffs considera só quem sobrou (residentes e tarefas livres)
+  const numOffs = Math.max(0, availableResidents.length - availableTasks.length);
+
+  if (numOffs > 0) {
+    availableResidents.sort((a, b) => {
+      const diff = stats[b.id].weeksWithoutOff - stats[a.id].weeksWithoutOff;
+      if (diff !== 0) return diff;
+
+      // Empate no tempo sem folga → escolha aleatória
+      return Math.random() - 0.5;
+    });
+
     console.log(
-  availableResidents.map(r => ({
-    nome:r.nome,
-    semFolga:stats[r.id].weeksWithoutOff,
-    folgas:stats[r.id].totalOffs
-  }))
-);
+      availableResidents.map(r => ({
+        nome: r.nome,
+        semFolga: stats[r.id].weeksWithoutOff,
+        folgas: stats[r.id].totalOffs
+      }))
+    );
 
     const offResidents = availableResidents.splice(0, numOffs);
-    console.log(
-  "Folgas escolhidas:",
-  offResidents.map(r => r.nome)
-);
+    console.log("Folgas escolhidas:", offResidents.map(r => r.nome));
+
     offResidents.forEach(r => {
-      newAssignments.push({ residentId: r.id, taskId: null, weight: 0 }); 
+      newAssignments.push({ residentId: r.id, taskId: null, weight: 0 });
     });
   }
 
-  // 5. Ordenar tarefas: da mais pesada para a mais leve
-  const sortedTasks = [...tasks].sort((a, b) => b.peso - a.peso);
+  // 6. Ordenar tarefas restantes: da mais pesada para a mais leve
+  const sortedTasks = [...availableTasks].sort((a, b) => b.peso - a.peso);
 
-  // 6. Distribuir Tarefas Baseado no Score de Justiça
+  const TASK_SIDE_REQUIREMENTS: Record<string, 'esquerdo' | 'direito'> = {
+    'Banheiro 1': 'direito',
+    'Banheiro 2': 'esquerdo',
+  };
+
+  // 7. Distribuir Tarefas Baseado no Score de Justiça
   sortedTasks.forEach(task => {
-    availableResidents.sort((a, b) => {
+    const requiredSide = TASK_SIDE_REQUIREMENTS[task.nome];
+
+    let candidatos = availableResidents;
+    if (requiredSide) {
+      const doLadoCerto = availableResidents.filter(r => r.lado === requiredSide);
+      if (doLadoCerto.length > 0) {
+        candidatos = doLadoCerto;
+      } else {
+        console.warn(`Nenhum morador do lado "${requiredSide}" disponível para "${task.nome}". Atribuindo sem restrição de lado.`);
+      }
+    }
+
+    candidatos.sort((a, b) => {
       const statsA = stats[a.id];
       const statsB = stats[b.id];
 
-      // Regra 1: Penalidade infinita para não repetir a mesma tarefa da semana passada
       const isConsecutiveA = statsA.lastWeekTaskId === task.id;
       const isConsecutiveB = statsB.lastWeekTaskId === task.id;
-      
+
       if (isConsecutiveA && !isConsecutiveB) return 1;
       if (!isConsecutiveA && isConsecutiveB) return -1;
 
-      // Regra 2: Score = (Vezes que já fez essa tarefa * 100) + Peso Total Acumulado
-      // O multiplicador 100 garante que a rotação de tarefas seja mais importante que o peso geral
       const scoreA = ((statsA.taskCounts[task.id] || 0) * 100) + statsA.totalWeight;
       const scoreB = ((statsB.taskCounts[task.id] || 0) * 100) + statsB.totalWeight;
 
       const diff = scoreA - scoreB;
-      // Empate resolvido de forma justa (aleatório entre os elegíveis iguais)
-      return diff !== 0 ? diff : Math.random() - 0.5; 
+      return diff !== 0 ? diff : Math.random() - 0.5;
     });
 
-    // O morador com o MENOR score assume a tarefa (está no topo do array após o sort)
-    const selectedResident = availableResidents.shift(); 
-    
+    const selectedResident = candidatos.shift();
+
     if (selectedResident) {
+      availableResidents = availableResidents.filter(r => r.id !== selectedResident.id);
+
       newAssignments.push({
         residentId: selectedResident.id,
         taskId: task.id,
         weight: task.peso
       });
-      
-      // Atualiza os status virtuais para a próxima iteração do loop não escalar a mesma pessoa
+
       stats[selectedResident.id].totalWeight += task.peso;
-      stats[selectedResident.id].taskCounts[task.id] = 
+      stats[selectedResident.id].taskCounts[task.id] =
         (stats[selectedResident.id].taskCounts[task.id] || 0) + 1;
     }
   });

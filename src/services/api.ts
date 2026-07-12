@@ -56,11 +56,11 @@ export async function closeAndGenerateWeek(): Promise<boolean> {
     const tasks = await getActiveTasks();
     
     const { data: history, error: historyError } = await supabase
-      .from('atribuicoes')
-      .select(`
-        *,
-        semanas!inner(status, data_inicio)
-      `);
+    .from('atribuicoes')
+    .select(`
+      *,
+      semanas!inner(status, data_inicio, created_at)
+    `);
 
     if (historyError) throw historyError;
 

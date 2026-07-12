@@ -30,6 +30,7 @@ export function Admin() {
   // ==========================================
   const [isResidentModalOpen, setIsResidentModalOpen] = useState(false);
   const [editingResident, setEditingResident] = useState<Resident | null>(null);
+  const [residentSide, setResidentSide] = useState<'esquerdo' | 'direito'>('esquerdo');
   const [residentName, setResidentName] = useState('');
   const [isSubmittingResident, setIsSubmittingResident] = useState(false);
 
@@ -46,44 +47,44 @@ export function Admin() {
   // FUNÇÕES: MORADORES (CRIAR, EDITAR, REMOVER)
   // ==========================================
   const openResidentModal = (resident?: Resident) => {
-    if (resident) {
-      setEditingResident(resident);
-      setResidentName(resident.nome);
-    } else {
-      setEditingResident(null);
-      setResidentName('');
-    }
-    setIsResidentModalOpen(true);
-  };
+  if (resident) {
+    setEditingResident(resident);
+    setResidentName(resident.nome);
+    setResidentSide(resident.lado ?? 'esquerdo');
+  } else {
+    setEditingResident(null);
+    setResidentName('');
+    setResidentSide('esquerdo');
+  }
+  setIsResidentModalOpen(true);
+};
 
   const handleSaveResident = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!residentName.trim()) return;
-    
-    setIsSubmittingResident(true);
-    try {
-      if (editingResident) {
-        // Atualizar existente
-        const { error } = await supabase.from('moradores')
-          .update({ nome: residentName.trim() })
-          .eq('id', editingResident.id);
-        if (error) throw error;
-      } else {
-        // Criar novo
-        const { error } = await supabase.from('moradores')
-          .insert([{ nome: residentName.trim(), ativo: true }]);
-        if (error) throw error;
-      }
-
-      setIsResidentModalOpen(false);
-      refetchResidents(); 
-    } catch (error) {
-      console.error('Erro ao salvar morador:', error);
-      alert('Erro ao salvar o morador.');
-    } finally {
-      setIsSubmittingResident(false);
+  e.preventDefault();
+  if (!residentName.trim()) return;
+  
+  setIsSubmittingResident(true);
+  try {
+    if (editingResident) {
+      const { error } = await supabase.from('moradores')
+        .update({ nome: residentName.trim(), lado: residentSide })
+        .eq('id', editingResident.id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.from('moradores')
+        .insert([{ nome: residentName.trim(), ativo: true, lado: residentSide }]);
+      if (error) throw error;
     }
-  };
+
+    setIsResidentModalOpen(false);
+    refetchResidents(); 
+  } catch (error) {
+    console.error('Erro ao salvar morador:', error);
+    alert('Erro ao salvar o morador.');
+  } finally {
+    setIsSubmittingResident(false);
+  }
+};
 
   const handleRemoveResident = async (id: string, nome: string) => {
     if (!window.confirm(`Tem certeza que deseja remover "${nome}"? O histórico será mantido.`)) return;
@@ -488,16 +489,12 @@ export function Admin() {
         >
 
 
-        <div className="
-        font-semibold
-        text-gray-800
-        ">
-
-        {resident.nome}
-
+        <div className="font-semibold text-gray-800">
+            {resident.nome}
+            <span className="ml-2 text-xs font-normal text-gray-400">
+                ({resident.lado === 'esquerdo' ? 'Esquerdo' : 'Direito'})
+            </span>
         </div>
-
-
 
         <div className="
         flex
@@ -555,10 +552,6 @@ export function Admin() {
 
 
         </section>
-
-
-
-
 
 
         {/* TAREFAS */}
@@ -682,8 +675,7 @@ export function Admin() {
 
         </div>
 
-
-
+        
 
         <div className="flex gap-2">
 
@@ -761,172 +753,155 @@ export function Admin() {
 >
 
 <form
-onSubmit={handleSaveResident}
-className="space-y-4"
+  onSubmit={handleSaveResident}
+  className="space-y-4"
 >
 
-<div>
+  <div>
+    <label className="block text-sm font-medium mb-1">
+      Nome do morador
+    </label>
+    <input
+      type="text"
+      value={residentName}
+      onChange={(e)=>setResidentName(e.target.value)}
+      placeholder="Ex: Marcos"
+      className="
+        w-full
+        px-4
+        py-3
+        rounded-xl
+        border
+        focus:ring-2
+        focus:ring-blue-500
+        outline-none
+      "
+    />
+  </div>
 
-<label className="block text-sm font-medium mb-1">
-Nome do morador
-</label>
+  <div>
+    <label className="block text-sm font-medium mb-1">
+      Lado
+    </label>
+    <select
+      value={residentSide}
+      onChange={(e) => setResidentSide(e.target.value as 'esquerdo' | 'direito')}
+      className="
+        w-full
+        px-4
+        py-3
+        rounded-xl
+        border
+        focus:ring-2
+        focus:ring-blue-500
+        outline-none
+      "
+    >
+      <option value="esquerdo">Esquerdo</option>
+      <option value="direito">Direito</option>
+    </select>
+  </div>
 
+  <div className="flex justify-end gap-3">
+    <Button
+      type="button"
+      variant="secondary"
+      onClick={()=>setIsResidentModalOpen(false)}
+    >
+      Cancelar
+    </Button>
 
-<input
-type="text"
-value={residentName}
-onChange={(e)=>setResidentName(e.target.value)}
-placeholder="Ex: Marcos"
-className="
-w-full
-px-4
-py-3
-rounded-xl
-border
-focus:ring-2
-focus:ring-blue-500
-outline-none
-"
-/>
-
-</div>
-
-
-<div className="flex justify-end gap-3">
-
-
-<Button
-type="button"
-variant="secondary"
-onClick={()=>setIsResidentModalOpen(false)}
->
-Cancelar
-</Button>
-
-
-<Button
-type="submit"
-isLoading={isSubmittingResident}
->
-Salvar
-</Button>
-
-
-</div>
-
+    <Button
+      type="submit"
+      isLoading={isSubmittingResident}
+    >
+      Salvar
+    </Button>
+  </div>
 
 </form>
+  
 
 </Modal>
-
-
-
-
-
-{/* MODAL TAREFA */}
+  {/* MODAL TAREFA */}
 
 <Modal
-isOpen={isTaskModalOpen}
-onClose={()=>setIsTaskModalOpen(false)}
-title={
-editingTask
-?
-"Editar Tarefa"
-:
-"Adicionar Tarefa"
-}
+  isOpen={isTaskModalOpen}
+  onClose={() => setIsTaskModalOpen(false)}
+  title={
+    editingTask
+      ? "Editar Tarefa"
+      : "Adicionar Tarefa"
+  }
 >
 
+  <form
+    onSubmit={handleSaveTask}
+    className="space-y-4"
+  >
 
-<form
-onSubmit={handleSaveTask}
-className="space-y-4"
->
+    <div>
+      <label className="block text-sm font-medium mb-1">
+        Nome da tarefa
+      </label>
+      <input
+        value={taskName}
+        onChange={(e) => setTaskName(e.target.value)}
+        placeholder="Ex: Limpar geladeira"
+        className="
+          w-full
+          px-4
+          py-3
+          rounded-xl
+          border
+          focus:ring-2
+          focus:ring-blue-500
+          outline-none
+        "
+      />
+    </div>
 
+    <div>
+      <label className="block text-sm font-medium mb-1">
+        Peso
+      </label>
+      <input
+        type="number"
+        min="1"
+        max="10"
+        value={taskWeight}
+        onChange={(e) => setTaskWeight(Number(e.target.value))}
+        className="
+          w-full
+          px-4
+          py-3
+          rounded-xl
+          border
+          focus:ring-2
+          focus:ring-blue-500
+          outline-none
+        "
+      />
+    </div>
 
-<div>
+    <div className="flex justify-end gap-3">
+      <Button
+        type="button"
+        variant="secondary"
+        onClick={() => setIsTaskModalOpen(false)}
+      >
+        Cancelar
+      </Button>
 
-<label className="block text-sm font-medium mb-1">
-Nome da tarefa
-</label>
+      <Button
+        type="submit"
+        isLoading={isSubmittingTask}
+      >
+        Salvar
+      </Button>
+    </div>
 
-
-<input
-value={taskName}
-onChange={(e)=>setTaskName(e.target.value)}
-placeholder="Ex: Limpar geladeira"
-className="
-w-full
-px-4
-py-3
-rounded-xl
-border
-focus:ring-2
-focus:ring-blue-500
-outline-none
-"
-/>
-
-
-</div>
-
-
-
-<div>
-
-<label className="block text-sm font-medium mb-1">
-Peso
-</label>
-
-
-<input
-type="number"
-min="1"
-max="10"
-value={taskWeight}
-onChange={(e)=>setTaskWeight(Number(e.target.value))}
-className="
-w-full
-px-4
-py-3
-rounded-xl
-border
-focus:ring-2
-focus:ring-blue-500
-outline-none
-"
-/>
-
-
-</div>
-
-
-
-<div className="flex justify-end gap-3">
-
-
-<Button
-type="button"
-variant="secondary"
-onClick={()=>setIsTaskModalOpen(false)}
->
-Cancelar
-</Button>
-
-
-<Button
-type="submit"
-isLoading={isSubmittingTask}
->
-Salvar
-</Button>
-
-
-</div>
-
-
-</form>
-
+  </form>
 
 </Modal>
 

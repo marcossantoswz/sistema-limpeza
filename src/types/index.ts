@@ -1,9 +1,12 @@
 // src/types/index.ts
 
+export type Lado = 'esquerdo' | 'direito';
+
 export interface Resident {
   id: string;
   nome: string;
   ativo: boolean;
+  lado: Lado | null;
   created_at?: string;
 }
 
@@ -34,10 +37,12 @@ export interface Assignment {
 }
 
 // Tipagem usada para a entrada do Algoritmo (com JOIN da tabela semanas)
+// Tipagem usada para a entrada do Algoritmo (com JOIN da tabela semanas)
 export interface AssignmentHistory extends Assignment {
   semanas: {
     status: 'atual' | 'arquivada';
     data_inicio: string;
+    created_at: string; // <- adiciona essa linha
   };
 }
 
