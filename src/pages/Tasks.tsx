@@ -97,7 +97,7 @@ export function Tasks() {
     a => a.tarefas !== null && a.status === 'pendente'
   );
 
-  let relatorio = '📋 Semana finalizada\n\n';
+  let relatorio = '📋 Semana finalizada (Resumo Gerado Automaticamente): \n\n';
 
   relatorio += '✅ Fizeram a tarefa:\n';
   relatorio += feitas.length > 0

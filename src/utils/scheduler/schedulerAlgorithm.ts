@@ -11,13 +11,79 @@ interface ResidentStats {
   lastWeekTaskId: string | null;
 }
 
+type Assignment = { residentId: string; taskId: string | null; weight: number };
+
+const TASK_SIDE_REQUIREMENTS: Record<string, 'esquerdo' | 'direito'> = {
+  'Banheiro 1': 'direito',
+  'Banheiro 2': 'esquerdo',
+};
+
+// ==========================================================
+// NOVO — Passo final: corrige repetições evitáveis via troca.
+// Só troca tarefa com tarefa (nunca mexe em folga nem em quem
+// está travado por pendência — essas repetições são obrigatórias).
+// ==========================================================
+function resolveAvoidableRepeats(
+  assignments: Assignment[],
+  stats: Record<string, ResidentStats>,
+  tasks: Task[],
+  residents: Resident[],
+  lockedResidentIds: Set<string>
+) {
+  const residentById = new Map(residents.map(r => [r.id, r]));
+  const taskById = new Map(tasks.map(t => [t.id, t]));
+
+  const swappable = assignments.filter(
+    a => a.taskId !== null && !lockedResidentIds.has(a.residentId)
+  );
+
+  for (const assignment of swappable) {
+    const resident = residentById.get(assignment.residentId);
+    if (!resident) continue;
+
+    const isRepeat = stats[assignment.residentId].lastWeekTaskId === assignment.taskId;
+    if (!isRepeat) continue;
+
+    for (const other of swappable) {
+      if (other === assignment) continue;
+
+      const otherResident = residentById.get(other.residentId);
+      if (!otherResident) continue;
+
+      // A troca não pode criar um NOVO repeat pro outro morador
+      if (stats[other.residentId].lastWeekTaskId === assignment.taskId) continue;
+
+      const taskA = taskById.get(assignment.taskId!);
+      const taskB = taskById.get(other.taskId!);
+      if (!taskA || !taskB) continue;
+
+      // Respeita a regra de lado: cada um só assume a tarefa do outro
+      // se o lado dele bater com o que a tarefa exige
+      const sideA = TASK_SIDE_REQUIREMENTS[taskA.nome];
+      const sideB = TASK_SIDE_REQUIREMENTS[taskB.nome];
+      if (sideA && otherResident.lado !== sideA) continue;
+      if (sideB && resident.lado !== sideB) continue;
+
+      // Troca resolve — aplica
+      const tempTaskId = assignment.taskId;
+      const tempWeight = assignment.weight;
+      assignment.taskId = other.taskId;
+      assignment.weight = other.weight;
+      other.taskId = tempTaskId;
+      other.weight = tempWeight;
+
+      console.log(`Troca aplicada: ${resident.nome} <-> ${otherResident.nome} para evitar repetição de tarefa.`);
+      break;
+    }
+  }
+}
+
 export function generateNextWeekSchedule(
   residents: Resident[],
   tasks: Task[],
   history: AssignmentHistory[]
-): { residentId: string; taskId: string | null; weight: number }[] {
+): Assignment[] {
 
-  // 1. Inicializa os status de cada morador
   const stats: Record<string, ResidentStats> = {};
   residents.forEach(r => {
     stats[r.id] = {
@@ -30,15 +96,11 @@ export function generateNextWeekSchedule(
     };
   });
 
-  // 2. Descobre qual foi a última semana baseada em quando foi CRIADA
-  // (não na data_inicio, que pode se repetir se várias semanas forem
-  // finalizadas no mesmo dia durante testes)
   const sortedHistory = [...history].sort((a, b) =>
     new Date(b.semanas.created_at).getTime() - new Date(a.semanas.created_at).getTime()
   );
   const lastWeekId = sortedHistory.length > 0 ? sortedHistory[0].semana_id : null;
 
-  // 3. Descobre há quantas semanas consecutivas cada morador está SEM folga.
   const weekIds = [...new Set(history.map(h => h.semana_id))];
   const sortedWeekIds = weekIds.sort((a, b) => {
     const dateA = history.find(h => h.semana_id === a)!.semanas.created_at;
@@ -59,7 +121,6 @@ export function generateNextWeekSchedule(
     stats[r.id].weeksWithoutOff = count;
   });
 
-  // 4. Compila o currículo histórico de cada morador
   history.forEach(record => {
     if (!stats[record.morador_id]) return;
 
@@ -76,13 +137,9 @@ export function generateNextWeekSchedule(
     }
   });
 
-  // ==========================================================
-  // REGRA 3 e 4: Tarefa não concluída trava a pessoa
-  // na mesma tarefa + penalidade de -1 no weeksWithoutOff
-  // ==========================================================
   let availableResidents = [...residents];
   let availableTasks = [...tasks];
-  const newAssignments: { residentId: string; taskId: string | null; weight: number }[] = [];
+  const newAssignments: Assignment[] = [];
   const lockedResidentIds = new Set<string>();
 
   if (lastWeekId) {
@@ -91,7 +148,6 @@ export function generateNextWeekSchedule(
         h => h.semana_id === lastWeekId && h.morador_id === r.id
       );
 
-      // Só se aplica se: teve tarefa (não era folga) E não foi concluída
       const naoCompletou =
         lastWeekRecord &&
         lastWeekRecord.tarefa_id !== null &&
@@ -100,10 +156,8 @@ export function generateNextWeekSchedule(
       if (naoCompletou) {
         const tarefaPendente = tasks.find(t => t.id === lastWeekRecord!.tarefa_id);
 
-        // REGRA 4: penalidade -1, sem deixar negativo
-        stats[r.id].weeksWithoutOff = Math.max(0, stats[r.id].weeksWithoutOff - 1);
+        stats[r.id].weeksWithoutOff = Math.max(0, stats[r.id].weeksWithoutOff - 2);
 
-        // REGRA 3: só força repetição se a tarefa ainda existir/estiver ativa
         if (tarefaPendente) {
           newAssignments.push({
             residentId: r.id,
@@ -117,28 +171,23 @@ export function generateNextWeekSchedule(
 
           lockedResidentIds.add(r.id);
 
-          console.log(`${r.nome} não concluiu "${tarefaPendente.nome}" — travado na mesma tarefa (penalidade -1 aplicada).`);
+          console.log(`${r.nome} não concluiu "${tarefaPendente.nome}" — travado na mesma tarefa (penalidade -2 aplicada).`);
         }
       }
     });
 
-    // Remove quem já está travado do pool de decisão normal
     availableResidents = availableResidents.filter(r => !lockedResidentIds.has(r.id));
     availableTasks = availableTasks.filter(
       t => !newAssignments.some(a => a.taskId === t.id)
     );
   }
 
-  // 5. Determinar e Distribuir Folgas (Prioridade Máxima)
-  // numOffs considera só quem sobrou (residentes e tarefas livres)
   const numOffs = Math.max(0, availableResidents.length - availableTasks.length);
 
   if (numOffs > 0) {
     availableResidents.sort((a, b) => {
       const diff = stats[b.id].weeksWithoutOff - stats[a.id].weeksWithoutOff;
       if (diff !== 0) return diff;
-
-      // Empate no tempo sem folga → escolha aleatória
       return Math.random() - 0.5;
     });
 
@@ -158,26 +207,94 @@ export function generateNextWeekSchedule(
     });
   }
 
-  // 6. Ordenar tarefas restantes: da mais pesada para a mais leve
   const sortedTasks = [...availableTasks].sort((a, b) => b.peso - a.peso);
 
-  const TASK_SIDE_REQUIREMENTS: Record<string, 'esquerdo' | 'direito'> = {
-    'Banheiro 1': 'direito',
-    'Banheiro 2': 'esquerdo',
-  };
-
-  // 7. Distribuir Tarefas Baseado no Score de Justiça
-  sortedTasks.forEach(task => {
+  sortedTasks.forEach((task, taskIndex) => {
     const requiredSide = TASK_SIDE_REQUIREMENTS[task.nome];
+    let assignedViaRescue = false;
+
+    if (requiredSide) {
+      const doLadoCerto = availableResidents.filter(r => r.lado === requiredSide);
+
+      if (doLadoCerto.length === 0) {
+        const folgaDoLado = newAssignments
+          .filter(a => a.taskId === null)
+          .map(a => residents.find(r => r.id === a.residentId))
+          .filter((r): r is Resident => !!r && r.lado === requiredSide);
+
+        if (folgaDoLado.length > 0) {
+          folgaDoLado.sort((a, b) => {
+            const diffFolga = stats[a.id].weeksWithoutOff - stats[b.id].weeksWithoutOff;
+            if (diffFolga !== 0) return diffFolga;
+            const scoreA = ((stats[a.id].taskCounts[task.id] || 0) * 100) + stats[a.id].totalWeight;
+            const scoreB = ((stats[b.id].taskCounts[task.id] || 0) * 100) + stats[b.id].totalWeight;
+            const diff = scoreA - scoreB;
+            return diff !== 0 ? diff : Math.random() - 0.5;
+          });
+
+          const resgatado = folgaDoLado[0];
+
+          const futureTasks = sortedTasks.slice(taskIndex + 1);
+          const isCritical = (candidate: Resident) =>
+            futureTasks.some(futureTask => {
+              const side = TASK_SIDE_REQUIREMENTS[futureTask.nome];
+              if (!side || candidate.lado !== side) return false;
+              const outrosDoLado = availableResidents.filter(
+                r => r.lado === side && r.id !== candidate.id
+              );
+              return outrosDoLado.length === 0;
+            });
+
+          const candidatosParaFolga = availableResidents.filter(r => !isCritical(r));
+
+          if (candidatosParaFolga.length > 0) {
+            candidatosParaFolga.sort(
+              (a, b) => stats[b.id].weeksWithoutOff - stats[a.id].weeksWithoutOff
+            );
+            const substituto = candidatosParaFolga[0];
+
+            const idxFolga = newAssignments.findIndex(
+              a => a.taskId === null && a.residentId === resgatado.id
+            );
+            if (idxFolga !== -1) newAssignments.splice(idxFolga, 1);
+
+            newAssignments.push({ residentId: substituto.id, taskId: null, weight: 0 });
+            availableResidents = availableResidents.filter(r => r.id !== substituto.id);
+
+            newAssignments.push({
+              residentId: resgatado.id,
+              taskId: task.id,
+              weight: task.peso
+            });
+            stats[resgatado.id].totalWeight += task.peso;
+            stats[resgatado.id].taskCounts[task.id] =
+              (stats[resgatado.id].taskCounts[task.id] || 0) + 1;
+
+            console.warn(
+              `Ninguém do lado "${requiredSide}" disponível para "${task.nome}" — ` +
+              `${resgatado.nome} saiu da folga para cobrir a tarefa, e ` +
+              `${substituto.nome} entrou de folga no lugar dele(a).`
+            );
+
+            assignedViaRescue = true;
+          } else {
+            console.warn(
+              `Nenhum morador do lado "${requiredSide}" disponível para "${task.nome}", ` +
+              `sem substituto seguro pra folga. Atribuindo sem restrição de lado.`
+            );
+          }
+        } else {
+          console.warn(`Nenhum morador do lado "${requiredSide}" disponível para "${task.nome}" (nem entre quem tirou folga). Atribuindo sem restrição de lado.`);
+        }
+      }
+    }
+
+    if (assignedViaRescue) return;
 
     let candidatos = availableResidents;
     if (requiredSide) {
       const doLadoCerto = availableResidents.filter(r => r.lado === requiredSide);
-      if (doLadoCerto.length > 0) {
-        candidatos = doLadoCerto;
-      } else {
-        console.warn(`Nenhum morador do lado "${requiredSide}" disponível para "${task.nome}". Atribuindo sem restrição de lado.`);
-      }
+      if (doLadoCerto.length > 0) candidatos = doLadoCerto;
     }
 
     candidatos.sort((a, b) => {
@@ -213,6 +330,9 @@ export function generateNextWeekSchedule(
         (stats[selectedResident.id].taskCounts[task.id] || 0) + 1;
     }
   });
+
+  // PASSO FINAL: tenta corrigir repetições evitáveis via troca
+  resolveAvoidableRepeats(newAssignments, stats, tasks, residents, lockedResidentIds);
 
   return newAssignments;
 }
