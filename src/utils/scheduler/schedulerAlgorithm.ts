@@ -18,11 +18,10 @@ const TASK_SIDE_REQUIREMENTS: Record<string, 'esquerdo' | 'direito'> = {
   'Banheiro 2': 'esquerdo',
 };
 
-// ==========================================================
-// NOVO — Passo final: corrige repetições evitáveis via troca.
-// Só troca tarefa com tarefa (nunca mexe em folga nem em quem
-// está travado por pendência — essas repetições são obrigatórias).
-// ==========================================================
+// Quanto maior, mais forte o empurrão pra tarefas pesadas de quem está penalizado.
+// O bônus subtraído do score é PENALTY_WEIGHT_FACTOR * peso_da_tarefa.
+const PENALTY_WEIGHT_FACTOR = 50;
+
 function resolveAvoidableRepeats(
   assignments: Assignment[],
   stats: Record<string, ResidentStats>,
@@ -50,21 +49,17 @@ function resolveAvoidableRepeats(
       const otherResident = residentById.get(other.residentId);
       if (!otherResident) continue;
 
-      // A troca não pode criar um NOVO repeat pro outro morador
       if (stats[other.residentId].lastWeekTaskId === assignment.taskId) continue;
 
       const taskA = taskById.get(assignment.taskId!);
       const taskB = taskById.get(other.taskId!);
       if (!taskA || !taskB) continue;
 
-      // Respeita a regra de lado: cada um só assume a tarefa do outro
-      // se o lado dele bater com o que a tarefa exige
       const sideA = TASK_SIDE_REQUIREMENTS[taskA.nome];
       const sideB = TASK_SIDE_REQUIREMENTS[taskB.nome];
       if (sideA && otherResident.lado !== sideA) continue;
       if (sideB && resident.lado !== sideB) continue;
 
-      // Troca resolve — aplica
       const tempTaskId = assignment.taskId;
       const tempWeight = assignment.weight;
       assignment.taskId = other.taskId;
@@ -88,7 +83,7 @@ export function generateNextWeekSchedule(
   residents.forEach(r => {
     stats[r.id] = {
       id: r.id,
-      totalWeight: 0,
+      totalWeight: r.peso_inicial ?? 0,
       totalOffs: 0,
       weeksWithoutOff: 0,
       taskCounts: {},
@@ -108,7 +103,13 @@ export function generateNextWeekSchedule(
     return new Date(dateB).getTime() - new Date(dateA).getTime();
   });
 
+  // Set de quem está "em detox" — usado depois pra dar prioridade
+  // em tarefas mais pesadas na hora da distribuição.
+  const penalizedResidentIds = new Set<string>();
+
   residents.forEach(r => {
+    // Cálculo normal do weeksWithoutOff: conta semanas seguidas com
+    // tarefa (independente de status), parando na primeira folga.
     let count = 0;
     for (const weekId of sortedWeekIds) {
       const record = history.find(
@@ -119,6 +120,21 @@ export function generateNextWeekSchedule(
       count++;
     }
     stats[r.id].weeksWithoutOff = count;
+
+    // AJUSTE (correção do ponto 3): o Detox agora é calculado
+    // separadamente, olhando para a ÚLTIMA TAREFA (não-folga) atribuída
+    // ao morador — ignorando qualquer folga que tenha acontecido depois
+    // dela. Isso evita que uma folga "esconda" uma pendência antiga
+    // que ainda não foi resolvida.
+    const lastTaskRecord = sortedWeekIds
+      .map(weekId => history.find(h => h.semana_id === weekId && h.morador_id === r.id))
+      .find(record => record && record.tarefa_id !== null);
+
+    if (lastTaskRecord && lastTaskRecord.status === 'pendente') {
+      stats[r.id].weeksWithoutOff -= 2; // valor ajustado para -2
+      penalizedResidentIds.add(r.id);
+      console.log(`${r.nome} está em "detox" por não ter concluído a última tarefa atribuída (penalidade -2).`);
+    }
   });
 
   history.forEach(record => {
@@ -156,9 +172,14 @@ export function generateNextWeekSchedule(
       if (naoCompletou) {
         const tarefaPendente = tasks.find(t => t.id === lastWeekRecord!.tarefa_id);
 
-        stats[r.id].weeksWithoutOff = Math.max(0, stats[r.id].weeksWithoutOff - 2);
-
         if (tarefaPendente) {
+          // Exceção do Lixo: não trava, mas fica marcado como penalizado
+          // (já entrou em penalizedResidentIds no passo do Detox acima)
+          if (tarefaPendente.nome.toLowerCase().includes('lixo')) {
+            console.log(`${r.nome} não tirou o LIXO. Perde o direito à folga, mas é liberado para o sorteio geral (com prioridade para tarefas pesadas).`);
+            return;
+          }
+
           newAssignments.push({
             residentId: r.id,
             taskId: tarefaPendente.id,
@@ -171,7 +192,7 @@ export function generateNextWeekSchedule(
 
           lockedResidentIds.add(r.id);
 
-          console.log(`${r.nome} não concluiu "${tarefaPendente.nome}" — travado na mesma tarefa (penalidade -2 aplicada).`);
+          console.log(`${r.nome} não concluiu "${tarefaPendente.nome}" — travado na mesma tarefa.`);
         }
       }
     });
@@ -182,22 +203,19 @@ export function generateNextWeekSchedule(
     );
   }
 
+  // Determinar e Distribuir Folgas (Prioridade Máxima)
   const numOffs = Math.max(0, availableResidents.length - availableTasks.length);
 
   if (numOffs > 0) {
     availableResidents.sort((a, b) => {
       const diff = stats[b.id].weeksWithoutOff - stats[a.id].weeksWithoutOff;
       if (diff !== 0) return diff;
+
+      const offDiff = stats[a.id].totalOffs - stats[b.id].totalOffs;
+      if (offDiff !== 0) return offDiff;
+
       return Math.random() - 0.5;
     });
-
-    console.log(
-      availableResidents.map(r => ({
-        nome: r.nome,
-        semFolga: stats[r.id].weeksWithoutOff,
-        folgas: stats[r.id].totalOffs
-      }))
-    );
 
     const offResidents = availableResidents.splice(0, numOffs);
     console.log("Folgas escolhidas:", offResidents.map(r => r.nome));
@@ -277,14 +295,7 @@ export function generateNextWeekSchedule(
             );
 
             assignedViaRescue = true;
-          } else {
-            console.warn(
-              `Nenhum morador do lado "${requiredSide}" disponível para "${task.nome}", ` +
-              `sem substituto seguro pra folga. Atribuindo sem restrição de lado.`
-            );
           }
-        } else {
-          console.warn(`Nenhum morador do lado "${requiredSide}" disponível para "${task.nome}" (nem entre quem tirou folga). Atribuindo sem restrição de lado.`);
         }
       }
     }
@@ -307,8 +318,14 @@ export function generateNextWeekSchedule(
       if (isConsecutiveA && !isConsecutiveB) return 1;
       if (!isConsecutiveA && isConsecutiveB) return -1;
 
-      const scoreA = ((statsA.taskCounts[task.id] || 0) * 100) + statsA.totalWeight;
-      const scoreB = ((statsB.taskCounts[task.id] || 0) * 100) + statsB.totalWeight;
+      let scoreA = ((statsA.taskCounts[task.id] || 0) * 100) + statsA.totalWeight;
+      let scoreB = ((statsB.taskCounts[task.id] || 0) * 100) + statsB.totalWeight;
+
+      // NOVO: quem está penalizado ganha um bônus proporcional ao peso
+      // da tarefa — quanto mais pesada a tarefa, mais o score dela cai,
+      // tornando-a mais competitiva justamente para as tarefas pesadas.
+      if (penalizedResidentIds.has(a.id)) scoreA -= task.peso * PENALTY_WEIGHT_FACTOR;
+      if (penalizedResidentIds.has(b.id)) scoreB -= task.peso * PENALTY_WEIGHT_FACTOR;
 
       const diff = scoreA - scoreB;
       return diff !== 0 ? diff : Math.random() - 0.5;
@@ -331,7 +348,6 @@ export function generateNextWeekSchedule(
     }
   });
 
-  // PASSO FINAL: tenta corrigir repetições evitáveis via troca
   resolveAvoidableRepeats(newAssignments, stats, tasks, residents, lockedResidentIds);
 
   return newAssignments;

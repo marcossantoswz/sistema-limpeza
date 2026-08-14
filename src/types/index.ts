@@ -7,6 +7,7 @@ export interface Resident {
   nome: string;
   ativo: boolean;
   lado: Lado | null;
+  peso_inicial: number;
   created_at?: string;
 }
 

@@ -59,10 +59,39 @@ export function Admin() {
   setIsResidentModalOpen(true);
 };
 
+  async function calculateAverageStartingWeight(): Promise<number> {
+    const { data, error } = await supabase
+      .from('atribuicoes')
+      .select('morador_id, peso_historico, tarefa_id');
+
+    if (error) {
+      console.error('Erro ao calcular peso médio:', error);
+      return 0;
+    }
+
+    if (!data || data.length === 0 || residents.length === 0) return 0;
+
+    const weightByResident: Record<string, number> = {};
+    data.forEach(record => {
+      if (record.tarefa_id !== null) {
+        weightByResident[record.morador_id] =
+          (weightByResident[record.morador_id] || 0) + record.peso_historico;
+      }
+    });
+
+    // Inclui TODOS os moradores ativos atuais na média, mesmo quem
+    // ainda não tem peso acumulado (conta como 0) — assim a média
+    // reflete o grupo real, não só quem já trabalhou muito.
+    const weights = residents.map(r => weightByResident[r.id] || 0);
+    const total = weights.reduce((sum, w) => sum + w, 0);
+
+    return Math.round(total / weights.length);
+  }
+
   const handleSaveResident = async (e: React.FormEvent) => {
   e.preventDefault();
   if (!residentName.trim()) return;
-  
+
   setIsSubmittingResident(true);
   try {
     if (editingResident) {
@@ -71,13 +100,22 @@ export function Admin() {
         .eq('id', editingResident.id);
       if (error) throw error;
     } else {
+      const pesoInicial = await calculateAverageStartingWeight();
+
       const { error } = await supabase.from('moradores')
-        .insert([{ nome: residentName.trim(), ativo: true, lado: residentSide }]);
+        .insert([{
+          nome: residentName.trim(),
+          ativo: true,
+          lado: residentSide,
+          peso_inicial: pesoInicial
+        }]);
       if (error) throw error;
+
+      console.log(`Novo morador criado com peso inicial de ${pesoInicial} (média do grupo).`);
     }
 
     setIsResidentModalOpen(false);
-    refetchResidents(); 
+    refetchResidents();
   } catch (error) {
     console.error('Erro ao salvar morador:', error);
     alert('Erro ao salvar o morador.');
