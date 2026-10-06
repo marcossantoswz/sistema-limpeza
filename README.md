@@ -2,6 +2,8 @@
 
 Um sistema completo para organizar e distribuir automaticamente as tarefas semanais de limpeza em um apartamento ou república dividida. Criado para resolver o problema de distribuição injusta de tarefas domésticas, o projeto conta com um **algoritmo inteligente** de agendamento que leva em conta o histórico de limpeza, aplica punições para quem "vacila", e garante que todos façam sua parte.
 
+**[🔗 Acesse o projeto online aqui](https://sistema-limpeza-alpha.vercel.app/)**
+
 ## Funcionalidades
 
 - **Distribuição Automática de Tarefas:** Sorteio e distribuição semanal justa usando um algoritmo baseado em peso e histórico de tarefas.
