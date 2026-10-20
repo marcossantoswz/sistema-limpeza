@@ -1,5 +1,6 @@
 # Sistema de Limpeza - República
 
+<<<<<<< HEAD
 Um sistema completo para organizar e distribuir automaticamente as tarefas semanais de limpeza em um apartamento ou república dividida. Criado para resolver o problema de distribuição injusta de tarefas domésticas, o projeto conta com um **algoritmo inteligente** de agendamento que leva em conta o histórico de limpeza, aplica punições para quem "vacila", e garante que todos façam sua parte.
 
 **[🔗 Acesse o projeto online aqui](https://sistema-limpeza-alpha.vercel.app/)**
@@ -28,6 +29,37 @@ O projeto foi construído utilizando as seguintes tecnologias:
 
 ## Como o Algoritmo Funciona
 
+=======
+
+Um sistema completo para organizar e distribuir automaticamente as tarefas semanais de limpeza em um apartamento ou república dividida. Criado para resolver o problema de distribuição injusta de tarefas domésticas, o projeto conta com um **algoritmo inteligente** de agendamento que leva em conta o histórico de limpeza, aplica punições para quem "vacila", e garante que todos façam sua parte.
+
+**[🔗 Acesse o projeto online aqui](https://sistema-limpeza-alpha.vercel.app/)**
+
+## 🚀 Funcionalidades
+
+- **Distribuição Automática de Tarefas:** Sorteio e distribuição semanal justa usando um algoritmo baseado em peso e histórico de tarefas.
+- **Sistema de Folgas:** Se houver mais moradores do que tarefas, o sistema automaticamente distribui folgas, priorizando quem trabalha há mais semanas seguidas e possui bom histórico.
+- **Sistema Detox (Punição):** Quem não faz a tarefa fica com "nome sujo". O sistema penaliza moradores com tarefas pendentes, diminuindo a chance de folga e aumentando a chance de pegar as tarefas mais pesadas (ex: banheiro).
+- **Repetição de Tarefas (Castigo):** Quem não faz uma tarefa numa semana, fica travado nela na semana seguinte (exceto Lixo, que joga a pessoa pra uma tarefa pesada no sorteio normal).
+- **Restrição de Lado (Esquerdo/Direito):** Algumas tarefas (como Banheiro 1 e 2) são restritas a quem dorme no lado correspondente do apartamento. O algoritmo entende e respeita essa proximidade, inclusive "resgatando" de folga se não houver outra opção.
+- **Rankings:**
+  - **Ranking Geral:** Os moradores que mais colaboram.
+  - **Dirty Ranking (Ficha Suja):** Mostra os moradores mais penalizados pelo sistema Detox.
+- **Lista de Compras:** Gestão compartilhada do que precisa ser comprado para o apartamento.
+- **Histórico:** Visualização de semanas anteriores para manter a transparência.
+
+## 🛠️ Stack Tecnológica
+
+O projeto foi construído utilizando as seguintes tecnologias:
+
+- **Frontend:** React 19, TypeScript, Vite
+- **Estilização:** Tailwind CSS v4, Lucide React (Ícones)
+- **Backend / Banco de Dados:** Supabase
+- **Linting:** Oxlint
+
+## 🧠 Como o Algoritmo Funciona
+
+>>>>>>> 12947e2 (Salva alterações locais)
 A "mágica" da distribuição fica em `src/utils/scheduler/schedulerAlgorithm.ts`. O algoritmo segue estas regras principais:
 
 1. **Janela de Detox:** Avalia o histórico recente das últimas 3 tarefas atribuídas a cada morador. Vacilos recentes somam pontos de punição (`penaltyScore`).
@@ -36,7 +68,11 @@ A "mágica" da distribuição fica em `src/utils/scheduler/schedulerAlgorithm.ts
 4. **Restrição Geográfica:** Tenta achar candidatos para tarefas com lado definido (`Banheiro 1` = direito, `Banheiro 2` = esquerdo). Se o único disponível do lado já estava de folga, o algoritmo faz o "resgate", tira ele da folga e coloca outra pessoa livre de obrigações no lugar.
 5. **Balanceamento de Carga e Repetições:** Evita que a pessoa faça a mesma tarefa duas vezes seguidas se tiver mais gente livre. A escolha prioriza quem fez menos pontos acumulados (peso) até hoje, e joga o peso extra das tarefas difíceis para os moradores punidos.
 
+<<<<<<< HEAD
 ## Como Rodar o Projeto Localmente
+=======
+## 💻 Como Rodar o Projeto Localmente
+>>>>>>> 12947e2 (Salva alterações locais)
 
 1. **Clone o repositório** e acesse a pasta do projeto.
 2. **Instale as dependências:**
