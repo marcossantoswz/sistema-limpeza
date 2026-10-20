@@ -9,6 +9,7 @@ interface ResidentStats {
   weeksWithoutOff: number;
   taskCounts: Record<string, number>;
   lastWeekTaskId: string | null;
+  penaltyScore: number; // NOVO: Nível de punição baseado nas últimas 3 semanas
 }
 
 type Assignment = { residentId: string; taskId: string | null; weight: number };
@@ -19,7 +20,6 @@ const TASK_SIDE_REQUIREMENTS: Record<string, 'esquerdo' | 'direito'> = {
 };
 
 // Quanto maior, mais forte o empurrão pra tarefas pesadas de quem está penalizado.
-// O bônus subtraído do score é PENALTY_WEIGHT_FACTOR * peso_da_tarefa.
 const PENALTY_WEIGHT_FACTOR = 50;
 
 function resolveAvoidableRepeats(
@@ -87,7 +87,8 @@ export function generateNextWeekSchedule(
       totalOffs: 0,
       weeksWithoutOff: 0,
       taskCounts: {},
-      lastWeekTaskId: null
+      lastWeekTaskId: null,
+      penaltyScore: 0
     };
   });
 
@@ -103,37 +104,34 @@ export function generateNextWeekSchedule(
     return new Date(dateB).getTime() - new Date(dateA).getTime();
   });
 
-  // Set de quem está "em detox" — usado depois pra dar prioridade
-  // em tarefas mais pesadas na hora da distribuição.
-  const penalizedResidentIds = new Set<string>();
-
   residents.forEach(r => {
-    // Cálculo normal do weeksWithoutOff: conta semanas seguidas com
-    // tarefa (independente de status), parando na primeira folga.
+    // 1. Contador normal de semanas sem folga
     let count = 0;
     for (const weekId of sortedWeekIds) {
-      const record = history.find(
-        h => h.semana_id === weekId && h.morador_id === r.id
-      );
-      if (!record) break;
-      if (record.tarefa_id === null) break;
+      const record = history.find(h => h.semana_id === weekId && h.morador_id === r.id);
+      if (!record || record.tarefa_id === null) break;
       count++;
     }
     stats[r.id].weeksWithoutOff = count;
 
-    // AJUSTE (correção do ponto 3): o Detox agora é calculado
-    // separadamente, olhando para a ÚLTIMA TAREFA (não-folga) atribuída
-    // ao morador — ignorando qualquer folga que tenha acontecido depois
-    // dela. Isso evita que uma folga "esconda" uma pendência antiga
-    // que ainda não foi resolvida.
-    const lastTaskRecord = sortedWeekIds
+    // 2. NOVO DETOX: Janela de memória (Olha só as últimas 3 tarefas da pessoa)
+    const recentTasks = sortedWeekIds
       .map(weekId => history.find(h => h.semana_id === weekId && h.morador_id === r.id))
-      .find(record => record && record.tarefa_id !== null);
+      .filter(record => record && record.tarefa_id !== null) // Ignora as folgas nessa conta
+      .slice(0, 3); // Pega apenas o histórico das 3 últimas vezes que ele trabalhou
 
-    if (lastTaskRecord && lastTaskRecord.status === 'pendente') {
-      stats[r.id].weeksWithoutOff -= 2; // valor ajustado para -2
-      penalizedResidentIds.add(r.id);
-      console.log(`${r.nome} está em "detox" por não ter concluído a última tarefa atribuída (penalidade -2).`);
+    let penalty = 0;
+    // Se não fez a última (ex: Lixo), punição máxima
+    if (recentTasks.length > 0 && recentTasks[0]?.status === 'pendente') penalty += 4; 
+    // Se não fez a penúltima
+    if (recentTasks.length > 1 && recentTasks[1]?.status === 'pendente') penalty += 2;
+    // Se não fez a antepenúltima
+    if (recentTasks.length > 2 && recentTasks[2]?.status === 'pendente') penalty += 1;
+
+    stats[r.id].penaltyScore = penalty;
+
+    if (penalty > 0) {
+      console.log(`${r.nome} está com penaltyScore de ${penalty} devido a vacilos nas últimas 3 semanas.`);
     }
   });
 
@@ -173,10 +171,8 @@ export function generateNextWeekSchedule(
         const tarefaPendente = tasks.find(t => t.id === lastWeekRecord!.tarefa_id);
 
         if (tarefaPendente) {
-          // Exceção do Lixo: não trava, mas fica marcado como penalizado
-          // (já entrou em penalizedResidentIds no passo do Detox acima)
           if (tarefaPendente.nome.toLowerCase().includes('lixo')) {
-            console.log(`${r.nome} não tirou o LIXO. Perde o direito à folga, mas é liberado para o sorteio geral (com prioridade para tarefas pesadas).`);
+            console.log(`${r.nome} não tirou o LIXO. Liberado pro sorteio, mas o penaltyScore de 4 pontos garante que não terá folga.`);
             return;
           }
 
@@ -191,7 +187,6 @@ export function generateNextWeekSchedule(
             (stats[r.id].taskCounts[tarefaPendente.id] || 0) + 1;
 
           lockedResidentIds.add(r.id);
-
           console.log(`${r.nome} não concluiu "${tarefaPendente.nome}" — travado na mesma tarefa.`);
         }
       }
@@ -203,14 +198,20 @@ export function generateNextWeekSchedule(
     );
   }
 
-  // Determinar e Distribuir Folgas (Prioridade Máxima)
+  // 5. Determinar e Distribuir Folgas (Prioridade Máxima)
   const numOffs = Math.max(0, availableResidents.length - availableTasks.length);
 
   if (numOffs > 0) {
     availableResidents.sort((a, b) => {
+      // 🚨 PRIORIDADE 0: A Regra do Detox (Quem tem ficha mais suja vai pro fim da fila)
+      const penaltyDiff = stats[a.id].penaltyScore - stats[b.id].penaltyScore;
+      if (penaltyDiff !== 0) return penaltyDiff; // Quanto maior a penalidade, mais pro fim do array ele vai
+
+      // Prioridade 1: quem está há mais tempo sem folga
       const diff = stats[b.id].weeksWithoutOff - stats[a.id].weeksWithoutOff;
       if (diff !== 0) return diff;
 
+      // Prioridade 2: quem teve MENOS folgas no histórico
       const offDiff = stats[a.id].totalOffs - stats[b.id].totalOffs;
       if (offDiff !== 0) return offDiff;
 
@@ -251,8 +252,8 @@ export function generateNextWeekSchedule(
           });
 
           const resgatado = folgaDoLado[0];
-
           const futureTasks = sortedTasks.slice(taskIndex + 1);
+          
           const isCritical = (candidate: Resident) =>
             futureTasks.some(futureTask => {
               const side = TASK_SIDE_REQUIREMENTS[futureTask.nome];
@@ -291,7 +292,7 @@ export function generateNextWeekSchedule(
             console.warn(
               `Ninguém do lado "${requiredSide}" disponível para "${task.nome}" — ` +
               `${resgatado.nome} saiu da folga para cobrir a tarefa, e ` +
-              `${substituto.nome} entrou de folga no lugar dele(a).`
+              `${substituto.nome} entrou de folga no lugar.`
             );
 
             assignedViaRescue = true;
@@ -321,11 +322,9 @@ export function generateNextWeekSchedule(
       let scoreA = ((statsA.taskCounts[task.id] || 0) * 100) + statsA.totalWeight;
       let scoreB = ((statsB.taskCounts[task.id] || 0) * 100) + statsB.totalWeight;
 
-      // NOVO: quem está penalizado ganha um bônus proporcional ao peso
-      // da tarefa — quanto mais pesada a tarefa, mais o score dela cai,
-      // tornando-a mais competitiva justamente para as tarefas pesadas.
-      if (penalizedResidentIds.has(a.id)) scoreA -= task.peso * PENALTY_WEIGHT_FACTOR;
-      if (penalizedResidentIds.has(b.id)) scoreB -= task.peso * PENALTY_WEIGHT_FACTOR;
+      // Mantém a lógica de empurrar tarefas difíceis para os vacilões baseada na pontuação
+      if (statsA.penaltyScore > 0) scoreA -= task.peso * (PENALTY_WEIGHT_FACTOR * statsA.penaltyScore);
+      if (statsB.penaltyScore > 0) scoreB -= task.peso * (PENALTY_WEIGHT_FACTOR * statsB.penaltyScore);
 
       const diff = scoreA - scoreB;
       return diff !== 0 ? diff : Math.random() - 0.5;
