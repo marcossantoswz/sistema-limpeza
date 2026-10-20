@@ -1,6 +1,5 @@
 # Sistema de Limpeza - República
 
-<<<<<<< HEAD
 Um sistema completo para organizar e distribuir automaticamente as tarefas semanais de limpeza em um apartamento ou república dividida. Criado para resolver o problema de distribuição injusta de tarefas domésticas, o projeto conta com um **algoritmo inteligente** de agendamento que leva em conta o histórico de limpeza, aplica punições para quem "vacila", e garante que todos façam sua parte.
 
 **[🔗 Acesse o projeto online aqui](https://sistema-limpeza-alpha.vercel.app/)**
@@ -29,7 +28,6 @@ O projeto foi construído utilizando as seguintes tecnologias:
 
 ## Como o Algoritmo Funciona
 
-=======
 
 Um sistema completo para organizar e distribuir automaticamente as tarefas semanais de limpeza em um apartamento ou república dividida. Criado para resolver o problema de distribuição injusta de tarefas domésticas, o projeto conta com um **algoritmo inteligente** de agendamento que leva em conta o histórico de limpeza, aplica punições para quem "vacila", e garante que todos façam sua parte.
 
@@ -67,11 +65,7 @@ A regra da distribuição fica em `src/utils/scheduler/schedulerAlgorithm.ts`. O
 4. **Restrição Geográfica:** Tenta achar candidatos para tarefas com lado definido (`Banheiro 1` = direito, `Banheiro 2` = esquerdo). Se o único disponível do lado já estava de folga, o algoritmo faz o "resgate", tira ele da folga e coloca outra pessoa livre de obrigações no lugar.
 5. **Balanceamento de Carga e Repetições:** Evita que a pessoa faça a mesma tarefa duas vezes seguidas se tiver mais gente livre. A escolha prioriza quem fez menos pontos acumulados (peso) até hoje, e joga o peso extra das tarefas difíceis para os moradores punidos.
 
-<<<<<<< HEAD
 ## Como Rodar o Projeto Localmente
-=======
-## 💻 Como Rodar o Projeto Localmente
->>>>>>> 12947e2 (Salva alterações locais)
 
 1. **Clone o repositório** e acesse a pasta do projeto.
 2. **Instale as dependências:**
