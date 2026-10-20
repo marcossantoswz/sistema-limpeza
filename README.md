@@ -35,7 +35,7 @@ Um sistema completo para organizar e distribuir automaticamente as tarefas seman
 
 **[🔗 Acesse o projeto online aqui](https://sistema-limpeza-alpha.vercel.app/)**
 
-## 🚀 Funcionalidades
+## Funcionalidades
 
 - **Distribuição Automática de Tarefas:** Sorteio e distribuição semanal justa usando um algoritmo baseado em peso e histórico de tarefas.
 - **Sistema de Folgas:** Se houver mais moradores do que tarefas, o sistema automaticamente distribui folgas, priorizando quem trabalha há mais semanas seguidas e possui bom histórico.
@@ -48,7 +48,7 @@ Um sistema completo para organizar e distribuir automaticamente as tarefas seman
 - **Lista de Compras:** Gestão compartilhada do que precisa ser comprado para o apartamento.
 - **Histórico:** Visualização de semanas anteriores para manter a transparência.
 
-## 🛠️ Stack Tecnológica
+## Stack Tecnológica
 
 O projeto foi construído utilizando as seguintes tecnologias:
 
@@ -57,10 +57,9 @@ O projeto foi construído utilizando as seguintes tecnologias:
 - **Backend / Banco de Dados:** Supabase
 - **Linting:** Oxlint
 
-## 🧠 Como o Algoritmo Funciona
+## Como o Algoritmo Funciona
 
->>>>>>> 12947e2 (Salva alterações locais)
-A "mágica" da distribuição fica em `src/utils/scheduler/schedulerAlgorithm.ts`. O algoritmo segue estas regras principais:
+A regra da distribuição fica em `src/utils/scheduler/schedulerAlgorithm.ts`. O algoritmo segue estas regras principais:
 
 1. **Janela de Detox:** Avalia o histórico recente das últimas 3 tarefas atribuídas a cada morador. Vacilos recentes somam pontos de punição (`penaltyScore`).
 2. **Tarefas Pendentes:** Se você não fez a tarefa anterior, vai repetir a tarefa. O sistema te "trava" nela. Se foi o "Lixo", você entra na roleta mas ganha punição máxima para não ter folga e pegar uma tarefa com peso alto.
